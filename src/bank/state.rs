@@ -49,3 +49,24 @@ impl State {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::bank::{Transaction, TransactionType};
+
+    #[tokio::test]
+    async fn test_account_creation() {
+        let (sender, receiver) = tokio::sync::mpsc::channel(100);
+        let mut state = super::State::new(receiver);
+        assert!(state.get_all_accounts().is_empty());
+        sender
+            .send(Transaction::new(TransactionType::Deposit, 1, 1, Some(1000)))
+            .await
+            .unwrap();
+        drop(sender); // Close the sender to signal no more transactions will be sent
+        state.run().await;
+        let accounts = state.get_all_accounts();
+        assert_eq!(accounts.len(), 1);
+        assert!(accounts.contains_key(&1));
+    }
+}
