@@ -18,14 +18,9 @@ async fn main() {
     let (sender, receiver) = mpsc::channel(CHANNEL_SIZE);
     let mut state = bank::State::new(receiver);
 
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         state.run().await;
-        let mut writer = csv::Writer::from_writer(std::io::stdout());
-        for account in state.get_all_accounts().values() {
-            if let Err(err) = writer.serialize(account) {
-                eprintln!("Error writing account: {err}");
-            }
-        }
+        state
     });
 
     let mut reader = ReaderBuilder::new()
@@ -36,6 +31,18 @@ async fn main() {
     for transaction in reader.deserialize().flatten() {
         if let Err(err) = sender.send(transaction).await {
             eprintln!("Error sending transaction: {err}");
+        }
+    }
+
+    drop(sender); // Close the sender to signal no more transactions will be sent
+    let state = handle
+        .await
+        .expect("Failed to join the state handling task");
+
+    let mut writer = csv::Writer::from_writer(std::io::stdout());
+    for account in state.get_all_accounts().values() {
+        if let Err(err) = writer.serialize(account) {
+            eprintln!("Error writing account: {err}");
         }
     }
 }
